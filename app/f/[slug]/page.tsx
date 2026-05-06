@@ -10,6 +10,7 @@ import type { FoodCourt, PostType, SeatPost } from "@/lib/types";
 
 const refreshIntervalMs = 15_000;
 const requestLocationFallback = "指定なし";
+const extensionMinutes = 3;
 
 export default function FoodCourtPage() {
   const params = useParams<{ slug: string }>();
@@ -273,24 +274,17 @@ export default function FoodCourtPage() {
               <div className="mt-4 grid grid-cols-1 gap-2">
                 <button
                   className="rounded-md border border-leaf bg-white px-3 py-3 text-sm font-semibold text-leaf"
-                  onClick={() => void updatePost(selectedPost.id, { expires_at: new Date(Date.now() + 10 * 60_000).toISOString() })}
+                  onClick={() => void updatePost(selectedPost.id, { expires_at: new Date(Date.now() + extensionMinutes * 60_000).toISOString() })}
                   type="button"
                 >
-                  まだ有効
+                  {selectedPost.post_type === "offer" ? `まだ譲れます（+${extensionMinutes}分）` : `まだ探しています（+${extensionMinutes}分）`}
                 </button>
                 <button
                   className="rounded-md bg-stone-900 px-3 py-3 text-sm font-semibold text-white"
                   onClick={() => void updatePost(selectedPost.id, { status: "matched" })}
                   type="button"
                 >
-                  マッチしました
-                </button>
-                <button
-                  className="rounded-md border border-coral bg-white px-3 py-3 text-sm font-semibold text-coral"
-                  onClick={() => void updatePost(selectedPost.id, { status: "cancelled" })}
-                  type="button"
-                >
-                  取り下げ
+                  投稿を終了
                 </button>
               </div>
             )}
