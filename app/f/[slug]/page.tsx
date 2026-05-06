@@ -6,9 +6,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAnonymousUserId } from "@/lib/anonymous-user";
 import { remainingMinutes, shortPostCode } from "@/lib/post-display";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
-import type { FoodCourt, SeatPost } from "@/lib/types";
+import type { FoodCourt, PostType, SeatPost } from "@/lib/types";
 
 const refreshIntervalMs = 15_000;
+const requestLocationFallback = "指定なし";
 
 export default function FoodCourtPage() {
   const params = useParams<{ slug: string }>();
@@ -16,6 +17,7 @@ export default function FoodCourtPage() {
   const [anonymousUserId, setAnonymousUserId] = useState("");
   const [foodCourt, setFoodCourt] = useState<FoodCourt | null>(null);
   const [posts, setPosts] = useState<SeatPost[]>([]);
+  const [activeTab, setActiveTab] = useState<PostType>("offer");
   const [selectedPost, setSelectedPost] = useState<SeatPost | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -26,6 +28,9 @@ export default function FoodCourtPage() {
     () => selectedPost?.anonymous_user_id === anonymousUserId,
     [anonymousUserId, selectedPost]
   );
+  const offerPosts = useMemo(() => posts.filter((post) => post.post_type === "offer"), [posts]);
+  const requestPosts = useMemo(() => posts.filter((post) => post.post_type === "request"), [posts]);
+  const activePosts = activeTab === "offer" ? offerPosts : requestPosts;
 
   const loadFoodCourt = useCallback(async () => {
     if (!supabase || !slug) {
@@ -69,7 +74,6 @@ export default function FoodCourtPage() {
       .from("seat_posts")
       .select("*")
       .eq("food_court_id", foodCourt.id)
-      .eq("post_type", "offer")
       .eq("status", "active")
       .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
@@ -130,7 +134,7 @@ export default function FoodCourtPage() {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-leaf">{foodCourt?.name ?? "SeatSoon"}</p>
-            <h1 className="text-xl font-bold text-ink">空きそうな席</h1>
+            <h1 className="text-xl font-bold text-ink">席の状況</h1>
           </div>
           <Link className="shrink-0 rounded-md bg-leaf px-4 py-2 text-sm font-bold text-white" href={`/f/${slug}/new`}>
             投稿
@@ -146,8 +150,27 @@ export default function FoodCourtPage() {
           </div>
         )}
 
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={`rounded-md border p-3 text-left ${activeTab === "request" ? "border-coral bg-white shadow-sm" : "border-stone-200 bg-stone-50"}`}
+            onClick={() => setActiveTab("request")}
+            type="button"
+          >
+            <p className="text-xs font-bold text-coral">席探してます</p>
+            <p className="mt-1 text-2xl font-bold text-ink">{requestPosts.length}組</p>
+          </button>
+          <button
+            className={`rounded-md border p-3 text-left ${activeTab === "offer" ? "border-leaf bg-white shadow-sm" : "border-stone-200 bg-stone-50"}`}
+            onClick={() => setActiveTab("offer")}
+            type="button"
+          >
+            <p className="text-xs font-bold text-leaf">席譲ります</p>
+            <p className="mt-1 text-2xl font-bold text-ink">{offerPosts.length}件</p>
+          </button>
+        </div>
+
         <div className="flex items-center justify-between gap-3">
-          <p className="text-sm text-stone-600">{posts.length}件の有効な投稿</p>
+          <p className="text-sm text-stone-600">{activeTab === "offer" ? "空きそうな席" : "席を探している人"}</p>
           <button className="rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700" onClick={() => void loadPosts()} type="button">
             更新
           </button>
@@ -160,15 +183,19 @@ export default function FoodCourtPage() {
           <div className="rounded-md bg-white p-6 text-center text-sm text-stone-600">読み込み中...</div>
         ) : !foodCourt ? (
           <div className="rounded-md bg-white p-6 text-center text-sm text-stone-600">フードコートが見つかりません。</div>
-        ) : posts.length === 0 ? (
+        ) : activePosts.length === 0 ? (
           <div className="rounded-md border border-dashed border-stone-300 bg-white p-6 text-center">
-            <p className="font-bold text-ink">いま表示できる席はありません</p>
-            <p className="mt-2 text-sm text-stone-600">席を空ける人の投稿が入るとここに表示されます。</p>
+            <p className="font-bold text-ink">{activeTab === "offer" ? "いま表示できる席はありません" : "席を探している人はいません"}</p>
+            <p className="mt-2 text-sm text-stone-600">
+              {activeTab === "offer" ? "席を空ける人の投稿が入るとここに表示されます。" : "席を探している人が投稿するとここに表示されます。"}
+            </p>
           </div>
         ) : (
           <div className="space-y-2">
-            {posts.map((post) => {
+            {activePosts.map((post) => {
               const isOwner = post.anonymous_user_id === anonymousUserId;
+              const isOffer = post.post_type === "offer";
+              const locationText = post.location_note === requestLocationFallback ? "希望エリアなし" : post.location_note;
               return (
                 <button
                   className="w-full rounded-md border border-stone-200 bg-white p-3 text-left shadow-sm"
@@ -178,9 +205,9 @@ export default function FoodCourtPage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-leaf">#{shortPostCode(post.id)}</p>
-                      <p className="mt-1 truncate text-lg font-bold text-ink">{post.location_note}</p>
-                      {post.comment && <p className="mt-1 line-clamp-1 text-sm text-stone-600">目印: {post.comment}</p>}
+                      <p className={`text-xs font-bold ${isOffer ? "text-leaf" : "text-coral"}`}>#{shortPostCode(post.id)}</p>
+                      <p className="mt-1 truncate text-lg font-bold text-ink">{locationText}</p>
+                      {post.comment && <p className="mt-1 line-clamp-1 text-sm text-stone-600">{isOffer ? "目印" : "メモ"}: {post.comment}</p>}
                     </div>
                     <div className="shrink-0 rounded-md bg-stone-100 px-3 py-2 text-right text-sm text-stone-700">
                       <p>{post.people_count}人</p>
@@ -200,8 +227,12 @@ export default function FoodCourtPage() {
           <section className="w-full rounded-md bg-white p-4 shadow-lg" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-leaf">投稿 #{shortPostCode(selectedPost.id)}</p>
-                <h2 className="mt-1 text-2xl font-bold text-ink">{selectedPost.location_note}</h2>
+                <p className={`text-sm font-bold ${selectedPost.post_type === "offer" ? "text-leaf" : "text-coral"}`}>
+                  {selectedPost.post_type === "offer" ? "席譲ります" : "席探してます"} #{shortPostCode(selectedPost.id)}
+                </p>
+                <h2 className="mt-1 text-2xl font-bold text-ink">
+                  {selectedPost.location_note === requestLocationFallback ? "希望エリアなし" : selectedPost.location_note}
+                </h2>
               </div>
               <button className="rounded-md border border-stone-300 px-3 py-2 text-sm font-semibold text-stone-700" onClick={() => setSelectedPost(null)} type="button">
                 閉じる
@@ -221,16 +252,18 @@ export default function FoodCourtPage() {
 
             {selectedPost.comment && (
               <div className="mt-3 rounded-md bg-mint p-3 text-sm text-ink">
-                <p className="font-semibold">目印</p>
+                <p className="font-semibold">{selectedPost.post_type === "offer" ? "目印" : "メモ"}</p>
                 <p className="mt-1">{selectedPost.comment}</p>
               </div>
             )}
 
             <p className="mt-3 rounded-md bg-yellow-50 p-3 text-sm leading-6 text-stone-800">
-              この投稿は席の予約ではありません。現地で投稿番号を伝えて確認してください。
+              この投稿は席の予約ではありません。現地で譲り合って確認してください。
             </p>
 
-            <p className="mt-3 text-sm font-semibold text-stone-700">声かけ例: SeatSoonの #{shortPostCode(selectedPost.id)} を見ました。</p>
+            {selectedPost.post_type === "offer" && (
+              <p className="mt-3 text-sm font-semibold text-stone-700">声かけ例: SeatSoonの #{shortPostCode(selectedPost.id)} を見ました。</p>
+            )}
 
             {selectedIsOwner && (
               <div className="mt-4 grid grid-cols-1 gap-2">

@@ -5,15 +5,19 @@ import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { getAnonymousUserId } from "@/lib/anonymous-user";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
-import type { FoodCourt } from "@/lib/types";
+import type { FoodCourt, PostType } from "@/lib/types";
+
+const requestLocationFallback = "指定なし";
 
 type FormState = {
+  postType: PostType;
   peopleCount: string;
   locationNote: string;
   landmarkNote: string;
 };
 
 const initialFormState: FormState = {
+  postType: "offer",
   peopleCount: "2",
   locationNote: "",
   landmarkNote: ""
@@ -82,7 +86,7 @@ export default function NewOfferPage() {
       return;
     }
 
-    if (!form.locationNote.trim()) {
+    if (form.postType === "offer" && !form.locationNote.trim()) {
       setError("場所を入力してください。");
       return;
     }
@@ -91,9 +95,9 @@ export default function NewOfferPage() {
 
     const { error: insertError } = await supabase.from("seat_posts").insert({
       food_court_id: foodCourt.id,
-      post_type: "offer",
+      post_type: form.postType,
       people_count: peopleCount,
-      location_note: form.locationNote.trim(),
+      location_note: form.locationNote.trim() || requestLocationFallback,
       scheduled_time: null,
       comment: form.landmarkNote.trim() || null,
       anonymous_user_id: anonymousUserId
@@ -114,7 +118,7 @@ export default function NewOfferPage() {
       <header className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-leaf">{foodCourt?.name ?? "SeatSoon"}</p>
-          <h1 className="text-2xl font-bold text-ink">席をゆずる</h1>
+          <h1 className="text-2xl font-bold text-ink">投稿する</h1>
         </div>
         <Link className="shrink-0 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700" href={`/f/${slug}`}>
           戻る
@@ -131,6 +135,23 @@ export default function NewOfferPage() {
       <form className="space-y-4 rounded-md border border-stone-200 bg-white p-4 shadow-sm" onSubmit={handleSubmit}>
         <div className="rounded-md border border-sun bg-yellow-50 p-3 text-sm leading-6 text-stone-800">
           これは席の予約ではありません。金銭のやり取りは禁止です。現地で譲り合って確認してください。
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            className={`rounded-md border px-3 py-3 text-sm font-bold ${form.postType === "offer" ? "border-leaf bg-mint text-leaf" : "border-stone-300 bg-white text-stone-700"}`}
+            onClick={() => setForm((current) => ({ ...current, postType: "offer" }))}
+            type="button"
+          >
+            席譲ります
+          </button>
+          <button
+            className={`rounded-md border px-3 py-3 text-sm font-bold ${form.postType === "request" ? "border-coral bg-red-50 text-coral" : "border-stone-300 bg-white text-stone-700"}`}
+            onClick={() => setForm((current) => ({ ...current, postType: "request" }))}
+            type="button"
+          >
+            席探してます
+          </button>
         </div>
 
         {isLoading ? (
@@ -152,22 +173,22 @@ export default function NewOfferPage() {
         </label>
 
         <label className="block text-sm font-semibold text-ink">
-          場所
+          {form.postType === "offer" ? "場所" : "希望エリア"}
           <input
             className="mt-2 w-full rounded-md border border-stone-300 px-3 py-3 text-base outline-none focus:border-leaf focus:ring-2 focus:ring-mint"
             maxLength={80}
-            placeholder="例: マクドナルド前の窓側"
+            placeholder={form.postType === "offer" ? "例: マクドナルド前の窓側" : "任意: キッズスペース近く、どこでも"}
             value={form.locationNote}
             onChange={(event) => setForm((current) => ({ ...current, locationNote: event.target.value }))}
           />
         </label>
 
         <label className="block text-sm font-semibold text-ink">
-          目印
+          {form.postType === "offer" ? "目印" : "メモ"}
           <input
             className="mt-2 w-full rounded-md border border-stone-300 px-3 py-3 text-base outline-none focus:border-leaf focus:ring-2 focus:ring-mint"
             maxLength={120}
-            placeholder="任意: 赤いトレー、ベビーカーあり"
+            placeholder={form.postType === "offer" ? "任意: 赤いトレー、ベビーカーあり" : "任意: ベビーカーあり、4人席希望"}
             value={form.landmarkNote}
             onChange={(event) => setForm((current) => ({ ...current, landmarkNote: event.target.value }))}
           />
