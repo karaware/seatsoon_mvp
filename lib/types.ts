@@ -4,6 +4,7 @@ export type PostStatus = "active" | "matched" | "cancelled";
 export type FoodCourt = {
   id: string;
   name: string;
+  slug: string | null;
   area: string | null;
   created_at: string;
 };
@@ -27,8 +28,9 @@ export type Database = {
     Tables: {
       food_courts: {
         Row: FoodCourt;
-        Insert: Omit<FoodCourt, "id" | "created_at"> & {
+        Insert: Omit<FoodCourt, "id" | "created_at" | "slug"> & {
           id?: string;
+          slug?: string | null;
           created_at?: string;
         };
         Update: Partial<Omit<FoodCourt, "id">>;

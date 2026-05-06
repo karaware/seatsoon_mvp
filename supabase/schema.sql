@@ -1,6 +1,7 @@
 create table if not exists food_courts (
   id uuid primary key default gen_random_uuid(),
   name text not null,
+  slug text unique,
   area text,
   created_at timestamptz not null default now()
 );
@@ -21,6 +22,9 @@ create table if not exists seat_posts (
 
 alter table food_courts enable row level security;
 alter table seat_posts enable row level security;
+
+alter table food_courts add column if not exists slug text;
+create unique index if not exists food_courts_slug_key on food_courts(slug);
 
 drop policy if exists "Anyone can read food courts" on food_courts;
 drop policy if exists "Anyone can read active non-expired posts" on seat_posts;
@@ -55,3 +59,12 @@ values
   ('イオンモール テスト', '大阪'),
   ('ららぽーと テスト', '大阪')
 on conflict do nothing;
+
+update food_courts
+set slug = case
+  when name = 'テスト用フードコート' then 'test-foodcourt'
+  when name = 'イオンモール テスト' then 'aeon-test'
+  when name = 'ららぽーと テスト' then 'lalaport-test'
+  else slug
+end
+where slug is null;
