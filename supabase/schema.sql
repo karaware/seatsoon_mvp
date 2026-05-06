@@ -22,13 +22,19 @@ create table if not exists seat_posts (
 alter table food_courts enable row level security;
 alter table seat_posts enable row level security;
 
+drop policy if exists "Anyone can read food courts" on food_courts;
+drop policy if exists "Anyone can read active non-expired posts" on seat_posts;
+drop policy if exists "Anyone can read posts" on seat_posts;
+drop policy if exists "Anyone can create posts" on seat_posts;
+drop policy if exists "Anonymous owner can update own posts" on seat_posts;
+
 create policy "Anyone can read food courts"
   on food_courts for select
   using (true);
 
-create policy "Anyone can read active non-expired posts"
+create policy "Anyone can read posts"
   on seat_posts for select
-  using (status = 'active' and expires_at > now());
+  using (true);
 
 create policy "Anyone can create posts"
   on seat_posts for insert

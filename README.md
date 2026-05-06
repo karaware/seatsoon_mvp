@@ -18,6 +18,8 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 
 Supabase SQL Editorで `supabase/schema.sql` を実行してください。
 
+既にテーブルを作成済みの場合も、Policyを更新するため同じSQLを再実行できます。
+
 ## 開発
 
 ```bash
