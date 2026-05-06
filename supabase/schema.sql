@@ -24,7 +24,6 @@ alter table food_courts enable row level security;
 alter table seat_posts enable row level security;
 
 alter table food_courts add column if not exists slug text;
-create unique index if not exists food_courts_slug_key on food_courts(slug);
 
 drop policy if exists "Anyone can read food courts" on food_courts;
 drop policy if exists "Anyone can read active non-expired posts" on seat_posts;
@@ -53,18 +52,52 @@ create policy "Anonymous owner can update own posts"
   using (anonymous_user_id is not null)
   with check (anonymous_user_id is not null);
 
-insert into food_courts (name, area)
-values
-  ('テスト用フードコート', '大阪'),
-  ('イオンモール テスト', '大阪'),
-  ('ららぽーと テスト', '大阪')
-on conflict do nothing;
+insert into food_courts (name, slug, area)
+select 'テスト用フードコート', 'test-foodcourt', '大阪'
+where not exists (select 1 from food_courts where slug = 'test-foodcourt');
+
+insert into food_courts (name, slug, area)
+select 'イオンモール テスト', 'aeon-test', '大阪'
+where not exists (select 1 from food_courts where slug = 'aeon-test');
+
+insert into food_courts (name, slug, area)
+select 'ららぽーと テスト', 'lalaport-test', '大阪'
+where not exists (select 1 from food_courts where slug = 'lalaport-test');
 
 update food_courts
-set slug = case
-  when name = 'テスト用フードコート' then 'test-foodcourt'
-  when name = 'イオンモール テスト' then 'aeon-test'
-  when name = 'ららぽーと テスト' then 'lalaport-test'
-  else slug
-end
-where slug is null;
+set slug = 'test-foodcourt'
+where id = (
+  select id
+  from food_courts
+  where name = 'テスト用フードコート'
+    and slug is null
+    and not exists (select 1 from food_courts where slug = 'test-foodcourt')
+  order by created_at
+  limit 1
+);
+
+update food_courts
+set slug = 'aeon-test'
+where id = (
+  select id
+  from food_courts
+  where name = 'イオンモール テスト'
+    and slug is null
+    and not exists (select 1 from food_courts where slug = 'aeon-test')
+  order by created_at
+  limit 1
+);
+
+update food_courts
+set slug = 'lalaport-test'
+where id = (
+  select id
+  from food_courts
+  where name = 'ららぽーと テスト'
+    and slug is null
+    and not exists (select 1 from food_courts where slug = 'lalaport-test')
+  order by created_at
+  limit 1
+);
+
+create unique index if not exists food_courts_slug_key on food_courts(slug) where slug is not null;
