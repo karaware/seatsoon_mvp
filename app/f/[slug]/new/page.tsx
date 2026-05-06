@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { getAnonymousUserId } from "@/lib/anonymous-user";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
@@ -26,10 +26,12 @@ const initialFormState: FormState = {
 export default function NewOfferPage() {
   const params = useParams<{ slug: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const slug = params.slug;
+  const postType: PostType = searchParams.get("type") === "request" ? "request" : "offer";
   const [anonymousUserId, setAnonymousUserId] = useState("");
   const [foodCourt, setFoodCourt] = useState<FoodCourt | null>(null);
-  const [form, setForm] = useState<FormState>(initialFormState);
+  const [form, setForm] = useState<FormState>({ ...initialFormState, postType });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -118,7 +120,7 @@ export default function NewOfferPage() {
       <header className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-leaf">{foodCourt?.name ?? "SeatSoon"}</p>
-          <h1 className="text-2xl font-bold text-ink">投稿する</h1>
+          <h1 className="text-2xl font-bold text-ink">{postType === "offer" ? "席を譲る" : "席を探す"}</h1>
         </div>
         <Link className="shrink-0 rounded-md border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-stone-700" href={`/f/${slug}`}>
           戻る
@@ -137,21 +139,8 @@ export default function NewOfferPage() {
           これは席の予約ではありません。金銭のやり取りは禁止です。現地で譲り合って確認してください。
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            className={`rounded-md border px-3 py-3 text-sm font-bold ${form.postType === "offer" ? "border-leaf bg-mint text-leaf" : "border-stone-300 bg-white text-stone-700"}`}
-            onClick={() => setForm((current) => ({ ...current, postType: "offer" }))}
-            type="button"
-          >
-            席譲ります
-          </button>
-          <button
-            className={`rounded-md border px-3 py-3 text-sm font-bold ${form.postType === "request" ? "border-coral bg-red-50 text-coral" : "border-stone-300 bg-white text-stone-700"}`}
-            onClick={() => setForm((current) => ({ ...current, postType: "request" }))}
-            type="button"
-          >
-            席探してます
-          </button>
+        <div className={`rounded-md p-3 text-sm font-bold ${postType === "offer" ? "bg-mint text-leaf" : "bg-red-50 text-coral"}`}>
+          {postType === "offer" ? "席譲ります" : "席探してます"}
         </div>
 
         {isLoading ? (

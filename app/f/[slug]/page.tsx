@@ -136,9 +136,6 @@ export default function FoodCourtPage() {
             <p className="truncate text-sm font-semibold text-leaf">{foodCourt?.name ?? "SeatSoon"}</p>
             <h1 className="text-xl font-bold text-ink">席の状況</h1>
           </div>
-          <Link className="shrink-0 rounded-md bg-leaf px-4 py-2 text-sm font-bold text-white" href={`/f/${slug}/new`}>
-            投稿
-          </Link>
         </div>
       </header>
 
@@ -175,6 +172,13 @@ export default function FoodCourtPage() {
             更新
           </button>
         </div>
+
+        <Link
+          className={`block rounded-md px-4 py-3 text-center text-base font-bold text-white ${activeTab === "offer" ? "bg-leaf" : "bg-coral"}`}
+          href={`/f/${slug}/new?type=${activeTab}`}
+        >
+          {activeTab === "offer" ? "席を譲る投稿" : "席を探す投稿"}
+        </Link>
 
         {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
         {message && <p className="rounded-md bg-mint px-3 py-2 text-sm text-leaf">{message}</p>}
