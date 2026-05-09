@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAnonymousUserId } from "@/lib/anonymous-user";
 import { remainingMinutes, shortPostCode } from "@/lib/post-display";
 import { hasSupabaseConfig, supabase } from "@/lib/supabase";
-import type { FoodCourt, PostType, SeatPost } from "@/lib/types";
+import type { FoodCourt, PostType, SeatMatch, SeatPost } from "@/lib/types";
 
 const refreshIntervalMs = 15_000;
 const requestLocationFallback = "指定なし";
@@ -19,9 +19,11 @@ export default function FoodCourtPage() {
   const [anonymousUserId, setAnonymousUserId] = useState("");
   const [foodCourt, setFoodCourt] = useState<FoodCourt | null>(null);
   const [posts, setPosts] = useState<SeatPost[]>([]);
+  const [matches, setMatches] = useState<SeatMatch[]>([]);
   const [activeTab, setActiveTab] = useState<PostType>("offer");
   const [selectedPost, setSelectedPost] = useState<SeatPost | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isMatching, setIsMatching] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [now, setNow] = useState(() => Date.now());
@@ -33,6 +35,11 @@ export default function FoodCourtPage() {
   const offerPosts = useMemo(() => posts.filter((post) => post.post_type === "offer"), [posts]);
   const requestPosts = useMemo(() => posts.filter((post) => post.post_type === "request"), [posts]);
   const activePosts = activeTab === "offer" ? offerPosts : requestPosts;
+  const selectedMatch = useMemo(
+    () => matches.find((match) => match.offer_post_id === selectedPost?.id && match.status === "pending") ?? null,
+    [matches, selectedPost]
+  );
+  const selectedMatchIsMine = selectedMatch?.matched_by_anonymous_user_id === anonymousUserId;
 
   const loadFoodCourt = useCallback(async () => {
     if (!supabase || !slug) {
@@ -69,6 +76,7 @@ export default function FoodCourtPage() {
   const loadPosts = useCallback(async () => {
     if (!supabase || !foodCourt) {
       setPosts([]);
+      setMatches([]);
       return;
     }
 
@@ -85,7 +93,28 @@ export default function FoodCourtPage() {
       return;
     }
 
-    setPosts(data ?? []);
+    const activeSeatPosts = data ?? [];
+    setPosts(activeSeatPosts);
+
+    const offerPostIds = activeSeatPosts.filter((post) => post.post_type === "offer").map((post) => post.id);
+    if (offerPostIds.length === 0) {
+      setMatches([]);
+      return;
+    }
+
+    const { data: matchData, error: matchFetchError } = await supabase
+      .from("seat_matches")
+      .select("*")
+      .in("offer_post_id", offerPostIds)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+
+    if (matchFetchError) {
+      setError("マッチング状況を取得できませんでした。");
+      return;
+    }
+
+    setMatches(matchData ?? []);
   }, [foodCourt]);
 
   useEffect(() => {
@@ -126,6 +155,80 @@ export default function FoodCourtPage() {
     }
 
     setMessage("投稿を更新しました。");
+    setSelectedPost(null);
+    await loadPosts();
+  }
+
+  async function claimSeat(post: SeatPost) {
+    if (!supabase || !foodCourt || !anonymousUserId) {
+      setError("マッチングに必要な設定が不足しています。");
+      return;
+    }
+
+    if (post.anonymous_user_id === anonymousUserId) {
+      setError("自分の投稿には向かえません。");
+      return;
+    }
+
+    setIsMatching(true);
+    setError("");
+    setMessage("");
+
+    const { error: insertError } = await supabase.from("seat_matches").insert({
+      food_court_id: foodCourt.id,
+      offer_post_id: post.id,
+      matched_by_anonymous_user_id: anonymousUserId
+    });
+
+    setIsMatching(false);
+
+    if (insertError) {
+      setError("この席へのマッチングを開始できませんでした。すでに誰かが向かっている可能性があります。");
+      await loadPosts();
+      return;
+    }
+
+    setMessage("この席に向かう状態にしました。席を確保できたら記録してください。");
+    await loadPosts();
+  }
+
+  async function completeMatch(match: SeatMatch) {
+    if (!supabase || !selectedPost) {
+      return;
+    }
+
+    setIsMatching(true);
+    setError("");
+    setMessage("");
+
+    const completedAt = new Date().toISOString();
+    const { error: matchUpdateError } = await supabase
+      .from("seat_matches")
+      .update({ status: "completed", completed_at: completedAt })
+      .eq("id", match.id)
+      .eq("matched_by_anonymous_user_id", anonymousUserId);
+
+    if (matchUpdateError) {
+      setIsMatching(false);
+      setError("席確保を記録できませんでした。");
+      return;
+    }
+
+    const { error: postUpdateError } = await supabase
+      .from("seat_posts")
+      .update({ status: "matched" })
+      .eq("id", selectedPost.id)
+      .eq("status", "active");
+
+    setIsMatching(false);
+
+    if (postUpdateError) {
+      setError("席確保は記録しましたが、投稿の終了に失敗しました。");
+      await loadPosts();
+      return;
+    }
+
+    setMessage("席確保を記録しました。ご協力ありがとうございます。");
     setSelectedPost(null);
     await loadPosts();
   }
@@ -202,6 +305,8 @@ export default function FoodCourtPage() {
               const isOwner = post.anonymous_user_id === anonymousUserId;
               const isOffer = post.post_type === "offer";
               const locationText = post.location_note === requestLocationFallback ? "希望エリアなし" : post.location_note;
+              const pendingMatch = matches.find((match) => match.offer_post_id === post.id && match.status === "pending");
+              const isMyPendingMatch = pendingMatch?.matched_by_anonymous_user_id === anonymousUserId;
               return (
                 <button
                   className="w-full rounded-md border border-stone-200 bg-white p-3 text-left shadow-sm"
@@ -221,6 +326,11 @@ export default function FoodCourtPage() {
                     </div>
                   </div>
                   {isOwner && <p className="mt-2 text-xs font-semibold text-coral">自分の投稿</p>}
+                  {isOffer && pendingMatch && (
+                    <p className={`mt-2 text-xs font-semibold ${isMyPendingMatch ? "text-leaf" : "text-stone-600"}`}>
+                      {isMyPendingMatch ? "自分が向かっています" : "誰かが向かっています"}
+                    </p>
+                  )}
                 </button>
               );
             })}
@@ -268,11 +378,42 @@ export default function FoodCourtPage() {
             </p>
 
             {selectedPost.post_type === "offer" && (
-              <p className="mt-3 text-sm font-semibold text-stone-700">声かけ例: SeatSoonの #{shortPostCode(selectedPost.id)} を見ました。</p>
+              <div className="mt-3 space-y-3">
+                <p className="text-sm font-semibold text-stone-700">声かけ例: SeatSoonの #{shortPostCode(selectedPost.id)} を見ました。</p>
+                {!selectedIsOwner && !selectedMatch && (
+                  <button
+                    className="w-full rounded-md bg-leaf px-3 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-stone-400"
+                    disabled={isMatching}
+                    onClick={() => void claimSeat(selectedPost)}
+                    type="button"
+                  >
+                    {isMatching ? "記録中..." : "この席に向かう"}
+                  </button>
+                )}
+                {!selectedIsOwner && selectedMatch && !selectedMatchIsMine && (
+                  <p className="rounded-md bg-stone-100 p-3 text-sm font-semibold text-stone-700">誰かがこの席に向かっています。</p>
+                )}
+                {!selectedIsOwner && selectedMatchIsMine && selectedMatch && (
+                  <div className="space-y-2 rounded-md border border-leaf bg-mint p-3">
+                    <p className="text-sm font-semibold text-leaf">この席に向かっています。確保できたら記録してください。</p>
+                    <button
+                      className="w-full rounded-md bg-leaf px-3 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-stone-400"
+                      disabled={isMatching}
+                      onClick={() => void completeMatch(selectedMatch)}
+                      type="button"
+                    >
+                      {isMatching ? "記録中..." : "席を確保できた"}
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             {selectedIsOwner && (
               <div className="mt-4 grid grid-cols-1 gap-2">
+                {selectedPost.post_type === "offer" && selectedMatch && (
+                  <p className="rounded-md bg-mint p-3 text-sm font-semibold text-leaf">席を探している人が向かっています。</p>
+                )}
                 <button
                   className="rounded-md border border-leaf bg-white px-3 py-3 text-sm font-semibold text-leaf"
                   onClick={() => {

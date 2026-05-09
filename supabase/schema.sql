@@ -101,3 +101,78 @@ where id = (
 );
 
 create unique index if not exists food_courts_slug_key on food_courts(slug) where slug is not null;
+
+create table if not exists seat_matches (
+  id uuid primary key default gen_random_uuid(),
+  food_court_id uuid not null references food_courts(id),
+  offer_post_id uuid not null references seat_posts(id),
+  request_post_id uuid references seat_posts(id),
+  matched_by_anonymous_user_id text not null,
+  status text not null default 'pending' check (status in ('pending', 'completed', 'cancelled')),
+  created_at timestamptz not null default now(),
+  completed_at timestamptz
+);
+
+alter table seat_matches enable row level security;
+
+create unique index if not exists seat_matches_one_pending_per_offer
+  on seat_matches(offer_post_id)
+  where status = 'pending';
+
+create unique index if not exists seat_matches_one_pending_per_user_offer
+  on seat_matches(offer_post_id, matched_by_anonymous_user_id)
+  where status = 'pending';
+
+create index if not exists seat_matches_food_court_created_at_idx
+  on seat_matches(food_court_id, created_at desc);
+
+create or replace function prevent_duplicate_active_seat_post()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.status = 'active'
+    and new.anonymous_user_id is not null
+    and exists (
+      select 1
+      from seat_posts existing
+      where existing.food_court_id = new.food_court_id
+        and existing.anonymous_user_id = new.anonymous_user_id
+        and existing.status = 'active'
+        and existing.expires_at > now()
+    )
+  then
+    raise exception 'active seat post already exists for this anonymous user and food court'
+      using errcode = '23505';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_duplicate_active_seat_post_trigger on seat_posts;
+create trigger prevent_duplicate_active_seat_post_trigger
+  before insert on seat_posts
+  for each row
+  execute function prevent_duplicate_active_seat_post();
+
+drop policy if exists "Anyone can read seat matches" on seat_matches;
+drop policy if exists "Anyone can create pending seat matches" on seat_matches;
+drop policy if exists "Anonymous matcher can update own seat matches" on seat_matches;
+
+create policy "Anyone can read seat matches"
+  on seat_matches for select
+  using (true);
+
+create policy "Anyone can create pending seat matches"
+  on seat_matches for insert
+  with check (
+    status = 'pending'
+    and matched_by_anonymous_user_id is not null
+    and completed_at is null
+  );
+
+create policy "Anonymous matcher can update own seat matches"
+  on seat_matches for update
+  using (matched_by_anonymous_user_id is not null)
+  with check (matched_by_anonymous_user_id is not null);

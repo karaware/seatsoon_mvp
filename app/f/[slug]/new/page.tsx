@@ -95,6 +95,28 @@ export default function NewOfferPage() {
 
     setIsSubmitting(true);
 
+    const { data: existingPost, error: duplicateCheckError } = await supabase
+      .from("seat_posts")
+      .select("id")
+      .eq("food_court_id", foodCourt.id)
+      .eq("anonymous_user_id", anonymousUserId)
+      .eq("status", "active")
+      .gt("expires_at", new Date().toISOString())
+      .limit(1)
+      .maybeSingle();
+
+    if (duplicateCheckError) {
+      setIsSubmitting(false);
+      setError("投稿前の確認に失敗しました。もう一度お試しください。");
+      return;
+    }
+
+    if (existingPost) {
+      setIsSubmitting(false);
+      setError("すでに有効な投稿があります。現在の投稿を終了してから新しく投稿してください。");
+      return;
+    }
+
     const { error: insertError } = await supabase.from("seat_posts").insert({
       food_court_id: foodCourt.id,
       post_type: form.postType,
@@ -108,7 +130,7 @@ export default function NewOfferPage() {
     setIsSubmitting(false);
 
     if (insertError) {
-      setError("投稿できませんでした。入力内容とSupabaseの設定を確認してください。");
+      setError("投稿できませんでした。既に有効な投稿がある場合は、終了してから新しく投稿してください。");
       return;
     }
 
