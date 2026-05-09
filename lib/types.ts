@@ -1,5 +1,6 @@
 export type PostType = "offer" | "request";
 export type PostStatus = "active" | "matched" | "cancelled";
+export type MatchStatus = "pending" | "completed" | "cancelled";
 
 export type FoodCourt = {
   id: string;
@@ -21,6 +22,17 @@ export type SeatPost = {
   anonymous_user_id: string | null;
   created_at: string;
   expires_at: string;
+};
+
+export type SeatMatch = {
+  id: string;
+  food_court_id: string;
+  offer_post_id: string;
+  request_post_id: string | null;
+  matched_by_anonymous_user_id: string;
+  status: MatchStatus;
+  created_at: string;
+  completed_at: string | null;
 };
 
 export type Database = {
@@ -51,6 +63,40 @@ export type Database = {
             columns: ["food_court_id"];
             isOneToOne: false;
             referencedRelation: "food_courts";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
+      seat_matches: {
+        Row: SeatMatch;
+        Insert: Omit<SeatMatch, "id" | "created_at" | "completed_at" | "status" | "request_post_id"> & {
+          id?: string;
+          request_post_id?: string | null;
+          status?: MatchStatus;
+          created_at?: string;
+          completed_at?: string | null;
+        };
+        Update: Partial<Omit<SeatMatch, "id" | "created_at">>;
+        Relationships: [
+          {
+            foreignKeyName: "seat_matches_food_court_id_fkey";
+            columns: ["food_court_id"];
+            isOneToOne: false;
+            referencedRelation: "food_courts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seat_matches_offer_post_id_fkey";
+            columns: ["offer_post_id"];
+            isOneToOne: false;
+            referencedRelation: "seat_posts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "seat_matches_request_post_id_fkey";
+            columns: ["request_post_id"];
+            isOneToOne: false;
+            referencedRelation: "seat_posts";
             referencedColumns: ["id"];
           }
         ];
