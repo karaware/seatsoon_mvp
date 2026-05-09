@@ -159,6 +159,30 @@ export default function FoodCourtPage() {
     await loadPosts();
   }
 
+  async function findActiveRequestPostId() {
+    if (!supabase || !foodCourt || !anonymousUserId) {
+      return null;
+    }
+
+    const { data, error: requestFetchError } = await supabase
+      .from("seat_posts")
+      .select("id")
+      .eq("food_court_id", foodCourt.id)
+      .eq("anonymous_user_id", anonymousUserId)
+      .eq("post_type", "request")
+      .eq("status", "active")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (requestFetchError) {
+      throw requestFetchError;
+    }
+
+    return data?.id ?? null;
+  }
+
   async function claimSeat(post: SeatPost) {
     if (!supabase || !foodCourt || !anonymousUserId) {
       setError("マッチングに必要な設定が不足しています。");
@@ -174,9 +198,19 @@ export default function FoodCourtPage() {
     setError("");
     setMessage("");
 
+    let requestPostId: string | null = null;
+    try {
+      requestPostId = await findActiveRequestPostId();
+    } catch {
+      setIsMatching(false);
+      setError("席探し投稿の確認に失敗しました。もう一度お試しください。");
+      return;
+    }
+
     const { error: insertError } = await supabase.from("seat_matches").insert({
       food_court_id: foodCourt.id,
       offer_post_id: post.id,
+      request_post_id: requestPostId,
       matched_by_anonymous_user_id: anonymousUserId
     });
 
@@ -214,10 +248,23 @@ export default function FoodCourtPage() {
       return;
     }
 
+    let requestPostId = match.request_post_id;
+    if (!requestPostId) {
+      try {
+        requestPostId = await findActiveRequestPostId();
+      } catch {
+        setIsMatching(false);
+        setError("席確保は記録しましたが、席探し投稿の確認に失敗しました。");
+        await loadPosts();
+        return;
+      }
+    }
+
+    const completedPostIds = Array.from(new Set([selectedPost.id, requestPostId].filter((postId): postId is string => Boolean(postId))));
     const { error: postUpdateError } = await supabase
       .from("seat_posts")
       .update({ status: "matched" })
-      .eq("id", selectedPost.id)
+      .in("id", completedPostIds)
       .eq("status", "active");
 
     setIsMatching(false);
